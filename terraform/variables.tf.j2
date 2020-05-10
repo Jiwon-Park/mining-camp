@@ -1,0 +1,28 @@
+variable "minecraft" {
+  type = map
+
+  default = {
+    port        = {{ server['port'] | default(25565) }}
+    bucket_name = "{{ aws['s3_bucket'] }}"
+  }
+}
+
+variable "max_spot_price" {
+  description = "Maximum amount to pay for per spot instance per hour."
+  default     = "{{ aws['max_spot_price'] }}"
+}
+
+variable "aws_region" {
+  description = "AWS region to launch servers in."
+  default     = "{{ aws['region'] }}"
+}
+
+variable "aws_availability_zone" {
+  description = "AWS availability zone to launch servers in."
+  default     = "{{ aws['availability_zone'] }}"
+}
+
+variable "aws_instance_type" {
+  description = "Spot instance type to launch."
+  default     = "{{ aws['instance_type'] }}"
+}

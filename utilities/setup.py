@@ -41,7 +41,7 @@ def prompt_type(description, value_type, default=None):
     prompt = ''.join(prompt)
 
     while True:
-        value = raw_input(prompt) or default
+        value = input(prompt) or default
         if value is None:
             continue
 

@@ -1,28 +1,25 @@
-
-resource "aws_s3_bucket" "minecraft" {
+resource "aws_s3_bucket_lifecycle_configuration" "minecraft" {
   bucket = var.minecraft["bucket_name"]
-  acl    = "private"
-
-  lifecycle_rule {
-    id      = "general"
-    enabled = true
-
+  rule {
+    id = "general"
+    status = "Enabled"
     transition {
-      days          = 30
+      days = 30
       storage_class = "STANDARD_IA"
     }
   }
-
-  lifecycle_rule {
-    id      = "backup pruning"
-    enabled = true
-
-    tags = {
-      backup = "old"
+  rule {
+    id = "backup pruning"
+    status = "Enabled"
+    filter{
+      tag{
+        key = "backup"
+        value = "old"
+      }
     }
-
     expiration {
       days = 3
     }
   }
+  
 }

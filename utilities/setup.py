@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 """
 Populates config templates based on user input.
+TODO: to python3
 """
 
 import sys

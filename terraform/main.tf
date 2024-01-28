@@ -142,5 +142,4 @@ resource "aws_autoscaling_group" "minecraft" {
   max_size             = 1
   launch_configuration = aws_launch_configuration.minecraft.name
 
-  tags = []
 }

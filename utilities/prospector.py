@@ -247,7 +247,7 @@ def main():
     try:
         with open(args.cfg[0], 'r') as f:
             config = ConfigParser()
-            config.readfp(f)
+            config.read_file(f)
     except IOError:
         logger.error('Unable to open config file \'{}\''.format(args.cfg[0]))
         sys.exit(1)

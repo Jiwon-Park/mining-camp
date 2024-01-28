@@ -10,7 +10,7 @@ import re
 import shutil
 import sys
 from argparse import ArgumentParser
-from ConfigParser import ConfigParser
+from configparser import ConfigParser
 from datetime import datetime, timedelta
 from tempfile import mkdtemp
 from zipfile import ZipFile, BadZipfile

@@ -23,7 +23,7 @@ def prompt_boolean(description):
     Prompts the user with the given `description` and returns a boolean
     indicating whether the answer was yes (True) or no (False).
     """
-    answer = raw_input(description + ' [yN] ') 
+    answer = input(description + ' [yN] ') 
     return answer and answer.lower() in ('yes', 'y')
 
 

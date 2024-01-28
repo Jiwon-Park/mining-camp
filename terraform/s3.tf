@@ -1,3 +1,4 @@
+
 resource "aws_s3_bucket" "minecraft" {
   bucket = var.minecraft["bucket_name"]
   acl    = "private"

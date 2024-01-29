@@ -34,7 +34,7 @@
   - name: "Install prerequisites"
     become: true
     apt:
-      name: ["awscli", "openjdk-8-jre-headless", "python-pip", "jq"]
+      name: ["awscli", "openjdk-17-jre-headless", "python-pip", "jq"]
       update_cache: yes
 
   - name: "Create minecraft root directory"

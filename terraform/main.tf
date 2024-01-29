@@ -87,7 +87,7 @@ data "aws_ami" "ubuntu" {
 
   filter {
     name   = "name"
-    values = ["ubuntu/images/hvm-instance/ubuntu-bionic-18.04-amd64-server-*"]
+    values = ["ubuntu-pro-server/images/hvm-ssd/ubuntu-jammy-22.04-amd64-pro-server-*"]
   }
 
   filter {
@@ -109,29 +109,48 @@ resource "aws_route53_zone" "minecraft" {
 }
 
 
-# Launch configuration
+# Launch template
 # We'll use this to easily turn on and off our server without having to remake
 # our entire instance configuration every time.
-resource "aws_launch_configuration" "minecraft" {
+resource "aws_launch_template" "minecraft" {
   name              = "minecraft"
   image_id          = data.aws_ami.ubuntu.id
+  
   instance_type     = var.aws_instance_type
-  spot_price        = var.max_spot_price
   ebs_optimized     = false
-  enable_monitoring = false
+  monitoring {
+    enabled = false
+  }
+  credit_specification {
+    cpu_credits = "standard"
+  }
+  instance_market_options {
+    market_type = "spot"
+    spot_options {
+      max_price = var.max_spot_price
+    }
+  }
+  
+  network_interfaces {
+    associate_public_ip_address = true
+    security_groups = [ aws_security_group.default.id ]
+    delete_on_termination = true
+  }
 
-  associate_public_ip_address = true
-
-  iam_instance_profile = aws_iam_instance_profile.minecraft.name
-  security_groups      = [aws_security_group.default.id]
+  iam_instance_profile {
+    name = aws_iam_instance_profile.minecraft.name
+  }
   key_name             = "minecraft"
 
-  user_data = templatefile("${ path.module }/provision.sh", {
+  user_data = base64encode(templatefile("${ path.module }/provision.sh", {
       bucket_name = var.minecraft["bucket_name"],
       server_name = var.minecraft["server_name"]
-  })
-}
+  }))
 
+  lifecycle {
+    create_before_destroy = true
+  }
+}
 # Autoscaling Group
 resource "aws_autoscaling_group" "minecraft" {
   vpc_zone_identifier = [aws_subnet.main.id]
@@ -140,6 +159,9 @@ resource "aws_autoscaling_group" "minecraft" {
   desired_capacity     = 0
   min_size             = 0
   max_size             = 1
-  launch_configuration = aws_launch_configuration.minecraft.name
+  launch_template {
+    id                 = aws_launch_template.minecraft.id
+    version            = "$Latest"
+  }
 
 }

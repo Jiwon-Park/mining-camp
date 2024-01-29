@@ -3,11 +3,6 @@ resource "aws_s3_bucket" "minecraft" {
   bucket = var.minecraft["bucket_name"]
 }
 
-resource "aws_s3_bucket_acl" "minecraft" {
-  bucket = aws_s3_bucket.minecraft.id
-  acl = "private"
-}
-
 resource "aws_s3_bucket_lifecycle_configuration" "minecraft" {
   bucket = aws_s3_bucket.minecraft.id
 

@@ -3,7 +3,7 @@
 # Bootstraps the minecraft server into a tmux session for easy access
 #
 # ./bootstrap.sh server_path
-
+exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&1
 if [ $# -eq 0 ]; then
     echo "First parameter should be the minecraft server root directory"
     exit 1

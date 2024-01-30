@@ -2,12 +2,25 @@
 # instance.
 
 - name: "Shutdown"
-  hosts: all
+  hosts: aws_ec2
 
+#  tasks:
+#  - amazon.aws.ec2_instance_info:
+#      filters:
+#        key-name: "minecraft"
+#        instance-state-name: "running"
+#    register: ec2ip
+
+#  - name: "Add instance public IP to host group"
+#    add_host: "hostname={{ec2ip['instances'][0]['network_interfaces'][0]['association']['public_ip']}} groups=ec2hosts"
+
+#  - debug:
+#      var: ec2ip["instances"][0]["network_interfaces"][0]["association"]["public_ip"]
   tasks:
   - name: "Shutdown server and push backup to S3"
     shell: |
         /minecraft/utilities/shutdown.sh /minecraft
+    become: yes
 
 - name: "Set ASG size to 0"
   hosts: localhost

@@ -76,7 +76,7 @@ class Prospector(object):
         Tag an s3 object identified by `key` with the key-value pairs in
         `kwargs`.
         """
-        tags = [{ 'Key': k, 'Value': v } for k, v in kwargs.iteritems()]
+        tags = [{ 'Key': k, 'Value': v } for k, v in kwargs.items()]
         self.client.put_object_tagging(
             Bucket=self.s3_bucket,
             Key=key,

@@ -34,7 +34,7 @@
   - name: "Install prerequisites"
     become: true
     apt:
-      name: ["awscli", "openjdk-17-jre-headless", "python-pip", "jq"]
+      name: ["awscli", "openjdk-17-jre-headless", "python3-pip", "jq"]
       update_cache: yes
 
   - name: "Create minecraft root directory"
@@ -77,7 +77,7 @@
   - name: "Retrieve server tarball from S3"
     aws_s3:
       bucket: "{{s3_bucket}}"
-      object: "/{{server_name}}/{{server_file}}"
+      object: "{{server_name}}/{{server_file}}"
       dest: "{{minecraft_dir}}/{{server_file}}"
       mode: get
 
@@ -116,7 +116,7 @@
 
   - name: "Fetch most recent backup from S3 and install it"
     shell: |
-      {{minecraft_dir}}/utilities/prospector.py fetch
+      python3 {{minecraft_dir}}/utilities/prospector.py fetch
 
   # If using the old elastic IP method, we associate the IP with this instance
   - name: "Associate elastic IP"
@@ -125,18 +125,32 @@
       aws ec2 associate-address --region {{aws_region}} --instance-id {{aws_instance_id}} --allocation-id {{aws_eip_alloc_id}}
 
   # If hosted zones, we add an A record for this instance
-  - name: "Download cli53"
-    when: server_hostname is defined and server_hostname and server_hostname | length > 0
-    get_url:
-      url: https://github.com/barnybug/cli53/releases/download/0.8.17/cli53-linux-amd64
-      dest: ./cli53
-      mode: '0755'
-
-  - name: "Register the instance IP via Route53"
+#  - name: "Download cli53"
+#    when: server_hostname is defined and server_hostname and server_hostname | length > 0
+#    get_url:
+#      url: https://github.com/barnybug/cli53/releases/download/0.8.22/cli53-linux-amd64
+#      dest: ./cli53
+#      mode: '0755'
+  - name: "Get Domain Details"
     when: server_hostname is defined and server_hostname and server_hostname | length > 0
     shell: |
-      ./cli53 rrcreate --replace {{server_hostname}} "@ 300 A $(ec2metadata --public-ipv4)"
+      aws lightsail get-domain --domain-name "{{ domain_name }}" --region us-east-1
+    register: lightsail_domain_output
+    ignore_errors: true
+
+  - name: "Parse1"
+    set_fact:
+      asdf: "{{lightsail_domain_output | json_query('stdout')}}"
+
+  - name: "Parse and Get Domain ID"
+    set_fact:
+      domain_id: "{{asdf | json_query('domain.domainEntries[?name==`' + server_hostname + '`].id | [0]')}}"
+
+  - name: "Register the instance IP via LightSail"
+    when: server_hostname is defined and server_hostname and server_hostname | length > 0
+    shell: |
+      aws lightsail update-domain-entry --domain-name seni.kr --domain-entry "id={{ domain_id }},name={{ server_hostname }},target=$(ec2metadata --public-ipv4),type=A" --region us-east-1
 
   - name: "Start server bootstrap script"
     shell: |
-      {{minecraft_dir}}/utilities/bootstrap.sh {{minecraft_dir}}/{{server_name}}
+      "{{minecraft_dir}}/utilities/bootstrap.sh" "{{minecraft_dir}}/{{server_name}}"

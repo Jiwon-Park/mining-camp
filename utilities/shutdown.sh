@@ -65,7 +65,7 @@ shutdown_server () {
     minecraft_cmd "stop"
     pid=`pgrep -f server-start.sh`
     while ps -p $pid > /dev/null; do
-        sleep 1
+        sleep 10
     done
 }
 

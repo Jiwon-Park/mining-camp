@@ -45,7 +45,7 @@ class Prospector(object):
         self.server_root_dir = server_root_dir
 
         self.s3_bucket = s3_bucket
-        self.client = boto3.client('s3')
+        self.client = boto3.client('s3', region_name="ap-northeast-2")
 
     @property
     def s3_backup_prefix(self):

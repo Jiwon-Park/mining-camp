@@ -97,7 +97,7 @@ resource "aws_iam_role_policy" "minecraft-lightsail" {
         "lightsail:CreateDomainEntry"
       ],
       "Resource": [
-        "arn:aws:lightsail:*:*:Domain/*"
+        "*"
       ]
     }
   ]

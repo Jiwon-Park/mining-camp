@@ -87,7 +87,7 @@ data "aws_ami" "ubuntu" {
 
   filter {
     name   = "name"
-    values = ["ubuntu-pro-server/images/hvm-ssd/ubuntu-jammy-22.04-amd64-pro-server-*"]
+    values = ["ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"]
   }
 
   filter {
@@ -100,13 +100,13 @@ data "aws_ami" "ubuntu" {
 
 
 # Route53
-resource "aws_route53_zone" "minecraft" {
+#resource "aws_route53_zone" "minecraft" {
     # Create an instance of this only if the server hostname is defined
-    count = var.minecraft["hostname"] != "" ? 1 : 0
+#    count = var.minecraft["hostname"] != "" ? 1 : 0
 
-    name = var.minecraft["hostname"]
-    force_destroy = true
-}
+#    name = var.minecraft["hostname"]
+#    force_destroy = true
+#}
 
 
 # Launch template

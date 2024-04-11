@@ -53,13 +53,16 @@ class Prospector(object):
         self.server_name = server_name
         self.world_name = world_name
         self.server_root_dir = server_root_dir
+        self.platform = platform
         if platform == 'azure':
             self.azure_container = azure_container
             self.azure_conn_str = azure_conn_str
-            self.azclient = BlobServiceClient.from_connection_string(azure_conn_str).get_container_client(azure_container)
+            cred = DefaultAzureCredential()
+            self.azclient = BlobServiceClient(account_url="https://<your_account>.blob.core.windows.net", credential=cred).get_container_client(azure_container)
+#            self.azclient = BlobServiceClient.from_connection_string(azure_conn_str).get_container_client(azure_container)
         elif platform == 'aws':
             self.s3_bucket = s3_bucket
-            self.awsclient = boto3.client('s3')
+            self.awsclient = boto3.client('s3', region_name="ap-northeast-2")
 
     @property
     def s3_backup_prefix(self):
@@ -90,7 +93,7 @@ class Prospector(object):
         Tag an s3 object identified by `key` with the key-value pairs in
         `kwargs`.
         """
-        tags = [{ 'Key': k, 'Value': v } for k, v in kwargs.iteritems()]
+        tags = [{ 'Key': k, 'Value': v } for k, v in kwargs.items()]
         if self.platform == 'azure':
             self.azclient.get_blob_client(key).set_blob_tags(kwargs)
         else:
@@ -296,7 +299,7 @@ def main():
         cfg['s3_bucket'] = config.get('main', 's3_bucket')
     elif args.platform == AZURE:
         cfg['azure_container'] = config.get('main', 'azure_container')
-        cfg['azure_conn_str'] = config.get('main', 'azure_conn_str')
+#        cfg['azure_conn_str'] = config.get('main', 'azure_conn_str')
 
     
     cfg['server_name'] = config.get('main', 'server_name')

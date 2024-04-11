@@ -21,7 +21,7 @@
   - name: "Push ansible archive to S3"
     aws_s3:
       bucket: "{{ s3_bucket }}"
-      object: "/{{ server_name }}/ansible.tgz"
+      object: "{{ server_name }}/ansible.tgz"
       src: "{{ tempdir.path }}/ansible.tgz"
       mode: put
 

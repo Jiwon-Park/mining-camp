@@ -14,7 +14,7 @@
 # `minecraft_root` should be the base directory everything minecraft-related is
 # installed to, usually /minecraft.
 
-
+exec > >(tee /var/log/user-data.log | logger -t user-data -s 2>/dev/console) 2>&1
 # Deal with script arguments
 MINECRAFT_ROOT=${1:-/minecraft}
 INSTANCE_PLATFORM=${2:-aws}
@@ -62,7 +62,7 @@ minecraft_cmd "/save-all flush"
 sleep 15
 
 # Delegate backup create and transfer to prospector
-$MINECRAFT_ROOT/utilities/prospector.py backup $INSTANCE_PLATFORM
+sudo -u root python3 $MINECRAFT_ROOT/utilities/prospector.py backup $INSTANCE_PLATFORM
 
 # Log and notify server users
 if [ $? -eq 0 ]; then

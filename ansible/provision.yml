@@ -50,6 +50,9 @@
   - name: "Fetch ipv4 aws"
     shell: "ec2metadata --public-ipv4"
     register: out
+    when: instance == "aws"
+  
+  - name: "Set public ipv4"
     set_fact:
       public_ipv4: "{{ out.stdout }}"
     when: instance == "aws"

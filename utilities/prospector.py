@@ -11,11 +11,14 @@ import shutil
 import sys
 from argparse import ArgumentParser
 from configparser import ConfigParser
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, tzinfo
 from tempfile import mkdtemp
 from zipfile import ZipFile, BadZipfile
 
 import boto3
+from azure.storage.blob import BlobServiceClient, BlobClient, ContainerClient
+from azure.identity import DefaultAzureCredential
+import boto3.s3
 
 
 # Logging
@@ -33,19 +36,30 @@ logger.addHandler(handler)
 S3_BACKUP_RE = re.compile('\w+-(\d{8}T\d{6}).zip')
 S3_BACKUP_DATE_FMT = '%Y%m%dT%H%M%S'
 
+class Timezone9(tzinfo):
+    def utcoffset(self, dt):
+        return timedelta(hours=9)
+    def dst(self, dt):
+        return timedelta(0)
+    def tzname(self, dt):
+        return "Asia/Seoul"
 
 class Prospector(object):
     """
     Deals with world backup, archival and retrieval from S3.
     """
 
-    def __init__(self, server_name, world_name, server_root_dir, s3_bucket):
+    def __init__(self, server_name, world_name, server_root_dir, platform, s3_bucket = None, azure_container = None, azure_conn_str = None):
         self.server_name = server_name
         self.world_name = world_name
         self.server_root_dir = server_root_dir
-
-        self.s3_bucket = s3_bucket
-        self.client = boto3.client('s3')
+        if platform == 'azure':
+            self.azure_container = azure_container
+            self.azure_conn_str = azure_conn_str
+            self.azclient = BlobServiceClient.from_connection_string(azure_conn_str).get_container_client(azure_container)
+        elif platform == 'aws':
+            self.s3_bucket = s3_bucket
+            self.awsclient = boto3.client('s3')
 
     @property
     def s3_backup_prefix(self):
@@ -77,11 +91,14 @@ class Prospector(object):
         `kwargs`.
         """
         tags = [{ 'Key': k, 'Value': v } for k, v in kwargs.iteritems()]
-        self.client.put_object_tagging(
-            Bucket=self.s3_bucket,
-            Key=key,
-            Tagging={ 'TagSet': tags }
-        )
+        if self.platform == 'azure':
+            self.azclient.get_blob_client(key).set_blob_tags(kwargs)
+        else:
+            self.awsclient.put_object_tagging(
+                Bucket=self.s3_bucket,
+                Key=key,
+                Tagging={ 'TagSet': tags }
+            )
 
     def s3_backup_key(self, date):
         """
@@ -106,8 +123,11 @@ class Prospector(object):
                 key,
                 tmp_path
             ))
-
-            self.client.download_file(self.s3_bucket, key, tmp_path)
+            if self.platform == 'azure':
+                with open(tmp_path, 'wb') as f:
+                    self.azclient.get_blob_client(key).download_blob().readinto(f)
+            else:
+                self.awsclient.download_file(self.s3_bucket, key, tmp_path)
 
             try:
                 with ZipFile(tmp_path, 'r') as z:
@@ -145,9 +165,15 @@ class Prospector(object):
         logger.info("Uploading backup file {} to s3://{}/{}".format(latest_path,
                                                                     self.s3_bucket,
                                                                     new_s3_key))
+        
+        if self.platform == 'azure':
+            with open(latest_path, 'rb') as f:
+                self.azclient.upload_blob(new_s3_key, f, metadata = {'backup': 'new'})
 
-        self.client.upload_file(latest_path, self.s3_bucket, new_s3_key)
-        self.tag_s3_object(new_s3_key, backup='new')
+        else:
+
+            self.awsclient.upload_file(latest_path, self.s3_bucket, new_s3_key)
+            self.tag_s3_object(new_s3_key, backup='new')
 
         if latest_s3_stamp:
             # If we found an older backup, retag it since it's no longer
@@ -175,7 +201,7 @@ class Prospector(object):
         """
         backup_path = os.path.join(
             mkdtemp(),
-            os.path.basename(self.s3_backup_key(datetime.utcnow()))
+            os.path.basename(self.s3_backup_key(datetime.now(tz=Timezone9())))
         )
 
         with ZipFile(backup_path, 'w') as z:
@@ -209,9 +235,13 @@ class Prospector(object):
         backups are found.
         """
         # We have to sort the results ourselves
-        obj_list = self.client.list_objects(Bucket=self.s3_bucket,
-                                            Prefix=self.s3_backup_prefix)
-        backups = [o['Key'] for o in obj_list.get('Contents', [])]
+        if self.platform == 'azure':
+            obj_list = self.azclient.list_blob_names(name_starts_with=self.s3_backup_prefix)
+            backups = list(obj_list)
+        else:
+            obj_list = self.awsclient.list_objects(Bucket=self.s3_bucket,
+                                                Prefix=self.s3_backup_prefix)
+            backups = [o['Key'] for o in obj_list.get('Contents', [])]
         backups.sort(reverse=True)
 
         # To ensure that the filename matches our format, iterate through our
@@ -227,7 +257,7 @@ class Prospector(object):
 
 def main():
     FETCH, BACKUP = 'fetch', 'backup'
-
+    AWS, AZURE = 'aws', 'azure'
     parser = ArgumentParser(
         description="Utilities for interacting with Minecraft backups stored "
                     "in an S3 bucket.")
@@ -236,6 +266,7 @@ def main():
              "S3 and installs it, 'backup' creates an archive from the world "
              "directory and pushes it to S3 (server should not be writing to "
              "disk during creation).")
+    parser.add_argument('platform', choices=(AWS, AZURE))
     parser.add_argument('--cfg', nargs=1, default=['/minecraft/prospector.cfg'],
         help="Config file to read settings from.")
     parser.add_argument('--log', nargs=1, default=['/minecraft/prospector.log'],
@@ -260,7 +291,14 @@ def main():
 
     # Parse out interesting pairs into their proper types from the config file
     cfg = dict()
-    cfg['s3_bucket'] = config.get('main', 's3_bucket')
+    cfg['platform'] = args.platform
+    if args.platform == AWS:
+        cfg['s3_bucket'] = config.get('main', 's3_bucket')
+    elif args.platform == AZURE:
+        cfg['azure_container'] = config.get('main', 'azure_container')
+        cfg['azure_conn_str'] = config.get('main', 'azure_conn_str')
+
+    
     cfg['server_name'] = config.get('main', 'server_name')
     cfg['server_root_dir'] = config.get('main', 'server_root_dir')
     cfg['world_name'] = config.get('main', 'world_name')

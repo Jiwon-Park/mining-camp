@@ -2,40 +2,72 @@
   hosts: localhost
 
   tasks:
-  - name: "Derive instance category and size from name"
-    set_fact:
-      aws_instance_category: "{{ aws_instance_type.split('.')[0] }}"
-      aws_instance_size: "{{ aws_instance_type.split('.')[1] }}"
+  # - name: "Derive instance category and size from name"
+  #   set_fact:
+  #     aws_instance_category: "{{ aws_instance_type.split('.')[0] }}"
+  #     aws_instance_size: "{{ aws_instance_type.split('.')[1] }}"
 
       # e.g. "m5" in "m5ad"
-      aws_instance_base:
-        "{{ aws_instance_type
-            | regex_search('^\\S+[0-9]+', ignorecase=True)
-            | lower }}"
+      # aws_instance_base:
+      #   "{{ aws_instance_type
+      #       | regex_search('^\\S+[0-9]+', ignorecase=True)
+      #       | lower }}"
 
-  - name: "Determine instance modifiers"
-    set_fact:
-      # List of suffixes after the base, like ["d", "n"] in "md5n". May be empty.
-      aws_instance_mods:
-        "{{ aws_instance_category.split(aws_instance_base)[1]
-            | regex_findall('(en|[adn])')
-            | lower }}"
+  # - name: "Determine instance modifiers"
+  #   set_fact:
+  #     # List of suffixes after the base, like ["d", "n"] in "md5n". May be empty.
+  #     aws_instance_mods:
+  #       "{{ aws_instance_category.split(aws_instance_base)[1]
+  #           | regex_findall('(en|[adn])')
+  #           | lower }}"
 
-  - name: "Fetch the instance ID"
-    uri:
-      url: http://169.254.169.254/latest/meta-data/instance-id
-      return_content: true
-    register: aws_instance_id_resp
+  # - name: "Fetch the instance ID"
+  #   uri:
+  #     url: http://169.254.169.254/latest/meta-data/instance-id
+  #     return_content: true
+  #   register: aws_instance_id_resp
 
-  - name: "Register the instance ID from the response"
-    set_fact:
-      aws_instance_id: "{{aws_instance_id_resp.content}}"
-
+  # - name: "Register the instance ID from the response"
+  #   set_fact:
+  #     aws_instance_id: "{{aws_instance_id_resp.content}}"
+  
   - name: "Install prerequisites"
     become: true
     apt:
       name: ["awscli", "openjdk-17-jre-headless", "python-pip", "jq"]
       update_cache: yes
+
+  - name: "Fetch IMDS"
+    uri:
+      url: http://169.254.169.254/latest/meta-data/instance-id
+      return_content: true
+    ignore_errors: true
+    register: http_response
+    set_fact:
+      instance: "aws"
+    failed_when: "http_response.status != 200"
+
+  - name: "Fetch ipv4 aws"
+    shell: "ec2metadata --public-ipv4"
+    register: out
+    set_fact:
+      public_ipv4: "{{ out.stdout }}"
+    when: instance == "aws"
+
+  - name: "If aws IMDS is not available, retrive azure IMDS"
+    uri:
+      url: http://169.254.169.254/metadata/instance?api-version=2021-02-01
+      return_content: true
+    register: http_response
+    set_fact:
+      instance: "azure"
+    when: instance is not defined
+
+  - name: "Retrieve resource group and publicIpAddress"
+    set_fact:
+      azure_resource_group: "{{ http_response.json.compute.resourceGroupName }}"
+      public_ipv4: "{{ http_response.json.compute.network.interface[0].ipv4.ipAddress[0].publicIpAddresses }}"
+    when: instance == "azure"
 
   - name: "Create minecraft root directory"
     become: true
@@ -47,22 +79,22 @@
 
   # Device mounting tasks, depending on the instance category
   # TODO: Add EBS support, if desired
-  - name: "Mount NVMe device to minecraft directory"
-    when: aws_instance_base in ["i3"] or "d" in aws_instance_mods
-    become: true
-    become_user: root
-    shell: |
-        mkfs.ext4 /dev/nvme0n1
-        mount -t ext4 /dev/nvme0n1 {{minecraft_dir}}
-        chown ubuntu:ubuntu {{minecraft_dir}}
+  # - name: "Mount NVMe device to minecraft directory"
+  #   when: aws_instance_base in ["i3"] or "d" in aws_instance_mods
+  #   become: true
+  #   become_user: root
+  #   shell: |
+  #       mkfs.ext4 /dev/nvme0n1
+  #       mount -t ext4 /dev/nvme0n1 {{minecraft_dir}}
+  #       chown ubuntu:ubuntu {{minecraft_dir}}
 
-  - name: "Mount SSD to minecraft directory"
-    when: aws_instance_base in ["x1", "f1", "d2", "h1"] or aws_instance_base == "m2"
-    become: true
-    shell: |
-        umount /mnt
-        mount /dev/xvdb {{minecraft_dir}}
-        chown ubuntu:ubuntu {{minecraft_dir}}
+  # - name: "Mount SSD to minecraft directory"
+  #   when: aws_instance_base in ["x1", "f1", "d2", "h1"] or aws_instance_base == "m2"
+  #   become: true
+  #   shell: |
+  #       umount /mnt
+  #       mount /dev/xvdb {{minecraft_dir}}
+  #       chown ubuntu:ubuntu {{minecraft_dir}}
 
   - name: "Install Python requirements"
     become: true
@@ -74,12 +106,22 @@
       path: "{{minecraft_dir}}/{{server_file}}"
       state: absent
 
-  - name: "Retrieve server tarball from S3"
+  - name: "Retrieve server tarball from S3 if instance is aws"
+    when: instance == "aws"
     aws_s3:
       bucket: "{{s3_bucket}}"
       object: "/{{server_name}}/{{server_file}}"
       dest: "{{minecraft_dir}}/{{server_file}}"
       mode: get
+
+  - name: "Retrieve server tarball from blob if instance is azure"
+    when: instance == "azure"
+    azure_rm_storageblob:
+      resource_group: "{{azure_resource_group}}"
+      storage_account_name: "{{azure_storage_account}}"
+      container_name: "{{azure_container_name}}"
+      blob_name: "{{server_name}}/{{server_file}}"
+      dest: "{{minecraft_dir}}/{{server_file}}"
 
   - name: "Extract and install server"
     shell: |
@@ -106,7 +148,7 @@
     cron:
       name: "Backup creation"
       minute: "*/30"
-      job: "{{minecraft_dir}}/utilities/backup.sh {{minecraft_dir}}"
+      job: "{{minecraft_dir}}/utilities/backup.sh {{minecraft_dir}} {{instance}}"
 
   - name: "Start emergency shutdown monitoring script in the background"
     # In order to run a background process, we detach inputs and outputs and
@@ -116,26 +158,37 @@
 
   - name: "Fetch most recent backup from S3 and install it"
     shell: |
-      {{minecraft_dir}}/utilities/prospector.py fetch
+      {{minecraft_dir}}/utilities/prospector.py fetch {{instance}}
 
   # If using the old elastic IP method, we associate the IP with this instance
-  - name: "Associate elastic IP"
-    when: aws_eip_alloc_id is defined and aws_eip_alloc_id and aws_eip_alloc_id | length > 0
-    shell: |
-      aws ec2 associate-address --region {{aws_region}} --instance-id {{aws_instance_id}} --allocation-id {{aws_eip_alloc_id}}
+  # - name: "Associate elastic IP"
+  #   when: aws_eip_alloc_id is defined and aws_eip_alloc_id and aws_eip_alloc_id | length > 0
+  #   shell: |
+  #     aws ec2 associate-address --region {{aws_region}} --instance-id {{aws_instance_id}} --allocation-id {{aws_eip_alloc_id}}
 
   # If hosted zones, we add an A record for this instance
-  - name: "Download cli53"
-    when: server_hostname is defined and server_hostname and server_hostname | length > 0
-    get_url:
-      url: https://github.com/barnybug/cli53/releases/download/0.8.17/cli53-linux-amd64
-      dest: ./cli53
-      mode: '0755'
+  - name: "Request DNS change"
+    uri:
+      url: "https://wake.seni.kr/change_dns"
+      method: POST
+      body_format: json
+      body:
+        name: "{{server_hostname}}"
+        ip: "{{public_ipv4}}"
+        key: "seniorious28"
 
-  - name: "Register the instance IP via Route53"
-    when: server_hostname is defined and server_hostname and server_hostname | length > 0
-    shell: |
-      ./cli53 rrcreate --replace {{server_hostname}} "@ 300 A $(ec2metadata --public-ipv4)"
+  # - name: "Download cli53"
+  #   when: server_hostname is defined and server_hostname and server_hostname | length > 0
+  #   get_url:
+  #     url: https://github.com/barnybug/cli53/releases/download/0.8.17/cli53-linux-amd64
+  #     dest: ./cli53
+  #     mode: '0755'
+
+  # - name: "Register the instance IP via Route53"
+  #   when: server_hostname is defined and and server_hostname and server_hostname | length > 0
+  #   shell: |
+  #     ./cli53 rrcreate --replace {{server_hostname}} "@ 300 A {{public_ipv4}}"
+
 
   - name: "Start server bootstrap script"
     shell: |

@@ -105,7 +105,7 @@ def main():
     # Populate the templates
     env = Environment(loader=FileSystemLoader('.'), autoescape=True)
 
-    templates = ['terraform/variables.tf.j2', 'ansible/group_vars/all.j2']
+    templates = ['terraform/aws/variables.tf.j2', 'ansible/group_vars/all.j2']
     for template_path in templates:
         template = env.get_template(template_path)
 

@@ -17,6 +17,7 @@
 
 # Deal with script arguments
 MINECRAFT_ROOT=${1:-/minecraft}
+INSTANCE_PLATFORM=${2:-aws}
 
 TMUX_SESSION=minecraft
 TMUX_PANE=${TMUX_SESSION}:0.0
@@ -61,7 +62,7 @@ minecraft_cmd "/save-all flush"
 sleep 15
 
 # Delegate backup create and transfer to prospector
-$MINECRAFT_ROOT/utilities/prospector.py backup
+$MINECRAFT_ROOT/utilities/prospector.py backup $INSTANCE_PLATFORM
 
 # Log and notify server users
 if [ $? -eq 0 ]; then

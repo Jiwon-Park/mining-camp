@@ -51,7 +51,7 @@
     register: out
     when: instance == "aws"
 
-  - name: "Set ipv4 aws"
+  - name: "Set public ipv4"
     set_fact:
       public_ipv4: "{{out.stdout}}"
     when: instance == "aws"

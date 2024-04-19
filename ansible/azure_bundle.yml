@@ -1,0 +1,39 @@
+# Bundles the local Ansible configuration and pushes the archive to S3
+
+- name: "Persist local Ansible to Blob"
+  hosts: localhost
+  gather_facts: false
+
+  tasks:
+  - name: "Create temporary directory"
+    tempfile:
+      state: directory
+    register: tempdir
+
+  - name: "Create an archive from the local Ansible + utilities"
+    archive:
+      path:
+      - "../ansible"
+      - "../utilities"
+      - "../requirements.txt"
+      dest: "{{ tempdir.path }}/ansible.tgz"
+
+  - name: "Push ansible archive to Blob"
+    azure_rm_storageblob:
+      storage_account_name: "{{ storage_account_name }}"
+      container: "{{ container_name }}"
+      blob: "/{{ server_name }}/ansible.tgz"
+      src: "{{ tempdir.path }}/ansible.tgz"
+      state: present
+
+
+      # bucket: "{{ s3_bucket }}"
+      # object: "/{{ server_name }}/ansible.tgz"
+      # src: "{{ tempdir.path }}/ansible.tgz"
+      # mode: put
+
+  - name: "Remove temporary directory"
+    file:
+      path: "{{ tempdir.path }}"
+      state: absent
+    when: tempdir.path is defined

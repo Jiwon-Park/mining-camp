@@ -65,7 +65,7 @@ shutdown_server () {
     minecraft_cmd "stop"
     pid=`pgrep -f server-start.sh`
     while ps -p $pid > /dev/null; do
-        sleep 1
+        sleep 10
     done
 }
 
@@ -90,7 +90,7 @@ if [[ "$(ps -o stat= -p $mypid)" =~ \+ ]]; then
     shutdown_server
 
     echo "Creating and pushing backup to S3"
-    $MINECRAFT_ROOT/utilities/prospector.py backup aws
+    sudo -u root python3 $MINECRAFT_ROOT/utilities/prospector.py backup aws
 else
     # Background, daemon mode
     echo "Running in background mode!"
@@ -120,7 +120,7 @@ else
             shutdown_server
 
             # Create and push a backup to S3
-            $MINECRAFT_ROOT/utilities/prospector.py backup aws
+            sudo -u root python3 $MINECRAFT_ROOT/utilities/prospector.py backup aws
 
             break
         fi

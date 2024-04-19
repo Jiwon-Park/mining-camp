@@ -31,30 +31,29 @@
   #   set_fact:
   #     aws_instance_id: "{{aws_instance_id_resp.content}}"
   
-  - name: "Install prerequisites"
-    become: true
-    apt:
-      name: ["awscli", "openjdk-17-jre-headless", "python-pip", "jq"]
-      update_cache: yes
-
   - name: "Fetch IMDS"
     uri:
       url: http://169.254.169.254/latest/meta-data/instance-id
       return_content: true
     ignore_errors: true
     register: http_response
+    failed_when: "http_response.status != 200"
+
+  - name: "is aws"
+    when: http_response is succeeded
     set_fact:
       instance: "aws"
-    failed_when: "http_response.status != 200"
+      azure_conn_str: "null"
+      azure_container: "null"
 
   - name: "Fetch ipv4 aws"
     shell: "ec2metadata --public-ipv4"
     register: out
     when: instance == "aws"
-  
+
   - name: "Set public ipv4"
     set_fact:
-      public_ipv4: "{{ out.stdout }}"
+      public_ipv4: "{{out.stdout}}"
     when: instance == "aws"
 
   - name: "If aws IMDS is not available, retrive azure IMDS"
@@ -62,6 +61,9 @@
       url: http://169.254.169.254/metadata/instance?api-version=2021-02-01
       return_content: true
     register: http_response
+    when: instance is not defined
+
+  - name: "azure set"
     set_fact:
       instance: "azure"
     when: instance is not defined
@@ -70,7 +72,14 @@
     set_fact:
       azure_resource_group: "{{ http_response.json.compute.resourceGroupName }}"
       public_ipv4: "{{ http_response.json.compute.network.interface[0].ipv4.ipAddress[0].publicIpAddresses }}"
+      azure_conn_str: "null"
     when: instance == "azure"
+
+  - name: "Install prerequisites"
+    become: true
+    apt:
+      name: ["awscli", "openjdk-21-jdk-headless", "python3-pip", "jq"]
+      update_cache: yes
 
   - name: "Create minecraft root directory"
     become: true
@@ -113,7 +122,7 @@
     when: instance == "aws"
     aws_s3:
       bucket: "{{s3_bucket}}"
-      object: "/{{server_name}}/{{server_file}}"
+      object: "{{server_name}}/{{server_file}}"
       dest: "{{minecraft_dir}}/{{server_file}}"
       mode: get
 
@@ -130,6 +139,7 @@
     shell: |
       cd {{minecraft_dir}}
       tar -xzvf {{server_file}}
+      rm {{server_file}}
 
   - name: "Render and install prospector config"
     template:
@@ -150,8 +160,9 @@
   - name: "Add periodic backup script to crontab"
     cron:
       name: "Backup creation"
-      minute: "*/30"
-      job: "{{minecraft_dir}}/utilities/backup.sh {{minecraft_dir}} {{instance}}"
+      minute: "0"
+      hour: "*/1"
+      job: "{{minecraft_dir}}/utilities/backup.sh {{minecraft_dir}}"
 
   - name: "Start emergency shutdown monitoring script in the background"
     # In order to run a background process, we detach inputs and outputs and
@@ -161,7 +172,7 @@
 
   - name: "Fetch most recent backup from S3 and install it"
     shell: |
-      {{minecraft_dir}}/utilities/prospector.py fetch {{instance}}
+      python3 {{minecraft_dir}}/utilities/prospector.py fetch {{instance}}
 
   # If using the old elastic IP method, we associate the IP with this instance
   # - name: "Associate elastic IP"
@@ -170,13 +181,14 @@
   #     aws ec2 associate-address --region {{aws_region}} --instance-id {{aws_instance_id}} --allocation-id {{aws_eip_alloc_id}}
 
   # If hosted zones, we add an A record for this instance
+
   - name: "Request DNS change"
     uri:
       url: "https://wake.seni.kr/change_dns"
       method: POST
       body_format: json
       body:
-        name: "{{server_hostname}}"
+        hostname: "{{server_hostname}}"
         ip: "{{public_ipv4}}"
         key: "seniorious28"
 
@@ -192,7 +204,6 @@
   #   shell: |
   #     ./cli53 rrcreate --replace {{server_hostname}} "@ 300 A {{public_ipv4}}"
 
-
   - name: "Start server bootstrap script"
     shell: |
-      {{minecraft_dir}}/utilities/bootstrap.sh {{minecraft_dir}}/{{server_name}}
+      "{{minecraft_dir}}/utilities/bootstrap.sh" "{{minecraft_dir}}/{{server_name}}"

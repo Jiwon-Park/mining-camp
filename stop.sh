@@ -9,4 +9,4 @@ echo "$parent_path"
 cd "$parent_path"
 activate
 cd "ansible"
-ansible-playbook stop.yml
+ansible-playbook stop.yml $@

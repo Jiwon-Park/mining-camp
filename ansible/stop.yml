@@ -3,6 +3,8 @@
 
 - name: "Shutdown"
   hosts: aws_ec2
+  vars:
+    backup: "1"
 
 #  tasks:
 #  - amazon.aws.ec2_instance_info:
@@ -21,6 +23,7 @@
     shell: |
         /minecraft/utilities/shutdown.sh /minecraft
     become: yes
+    when: backup == "1"
 
 - name: "Set ASG size to 0"
   hosts: localhost
